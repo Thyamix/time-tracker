@@ -177,7 +177,7 @@ case "$action" in
     ;;
 
   new:root)
-    name=$(echo "" | rofi -dmenu -p "New project name:" || true)
+    name=$(echo "" | rofi -dmenu -m primary -p "New project name:" || true)
     if [[ -n "$name" ]]; then
       api_post "projects" "{\"name\":\"$name\",\"parent_id\":null}"
       exec "$SCRIPT"
@@ -186,7 +186,7 @@ case "$action" in
 
   new:*)
     pid="${action#new:}"
-    name=$(echo "" | rofi -dmenu -p "New child name:" || true)
+    name=$(echo "" | rofi -dmenu -m primary -p "New child name:" || true)
     if [[ -n "$name" ]]; then
       api_post "projects" "{\"name\":\"$name\",\"parent_id\":$pid}"
       exec "$SCRIPT" "$current_id"
