@@ -1,0 +1,13 @@
+[Unit]
+Description=timetrack server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/timetrack
+Restart=on-failure
+Environment="PORT=7332"
+Environment="DB_PATH=%h/.local/share/timetrack/timetrack.db"
+
+[Install]
+WantedBy=default.target
