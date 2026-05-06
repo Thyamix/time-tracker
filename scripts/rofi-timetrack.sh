@@ -70,7 +70,7 @@ active_path=$(echo "$status_json" | jq -r '.path // empty')
 # ── if tracking is active, just stop ────────────────────────────────────────────
 
 if [[ -n "$active_id" && -z "$CURRENT" ]]; then
-  note=$(echo "" | rofi -dmenu -p "Note for ${active_path:-session} (optional):" || true)
+  note=$(echo "" | rofi -dmenu -m primary -p "Note for ${active_path:-session} (optional):" || true)
   if [[ -n "$note" || $? -eq 0 ]]; then
     api_post "track/stop" "{\"note\":\"${note:-}\"}"
   fi
@@ -145,7 +145,7 @@ if [[ -n "$current_id" ]]; then
   prompt="▶ ${bc}"
 fi
 
-selection=$(printf '%s\n' "${items[@]}" | rofi -dmenu -p "$prompt" -i -selected-row 0 || true)
+selection=$(printf '%s\n' "${items[@]}" | rofi -dmenu -m primary -p "$prompt" -i -selected-row 0 || true)
 
 if [[ -z "$selection" ]]; then
   exit 0
