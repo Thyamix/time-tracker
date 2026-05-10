@@ -16,6 +16,32 @@ type DB struct {
 	conn *sql.DB
 }
 
+var migrations = []struct {
+	version int
+	sql     string
+}{
+	{1, `
+        CREATE TABLE IF NOT EXISTS projects (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            parent_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            start      INTEGER NOT NULL,
+            end        INTEGER,
+            note       TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_start   ON sessions(start);
+    `},
+	{2, `
+        ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+    `},
+}
+
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
@@ -31,24 +57,39 @@ func Open(path string) (*DB, error) {
 func (d *DB) Close() error { return d.conn.Close() }
 
 func (d *DB) migrate() error {
+	// Create the version-tracking table itself
 	_, err := d.conn.Exec(`
-		CREATE TABLE IF NOT EXISTS projects (
-			id        INTEGER PRIMARY KEY AUTOINCREMENT,
-			name      TEXT    NOT NULL,
-			parent_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-			created_at INTEGER NOT NULL DEFAULT (unixepoch())
-		);
-		CREATE TABLE IF NOT EXISTS sessions (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-			start      INTEGER NOT NULL,
-			end        INTEGER,
-			note       TEXT NOT NULL DEFAULT ''
-		);
-		CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
-		CREATE INDEX IF NOT EXISTS idx_sessions_start   ON sessions(start);
-	`)
-	return err
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version    INTEGER PRIMARY KEY,
+            applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("creating migrations table: %w", err)
+	}
+
+	for _, m := range migrations {
+		var exists int
+		err := d.conn.QueryRow(
+			`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version,
+		).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("checking migration %d: %w", m.version, err)
+		}
+		if exists > 0 {
+			continue
+		}
+
+		if _, err := d.conn.Exec(m.sql); err != nil {
+			return fmt.Errorf("applying migration %d: %w", m.version, err)
+		}
+		if _, err := d.conn.Exec(
+			`INSERT INTO schema_migrations (version) VALUES (?)`, m.version,
+		); err != nil {
+			return fmt.Errorf("recording migration %d: %w", m.version, err)
+		}
+	}
+	return nil
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -377,4 +418,3 @@ func scanOneSession(s scanner) (*models.Session, error) {
 	}
 	return sess, nil
 }
-
