@@ -2,12 +2,33 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { fmtDuration, flattenTree } from '../utils'
 
-export default function Reports({ projects }) {
+export default function Reports() {
   const [range, setRange] = useState('alltime')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [month, setMonth] = useState('')
   const [stats, setStats] = useState(null)
 
+  const applyDateRange = () => {
+    if (!from || !to || from > to) return
+    setRange({ type: 'dates', from, to })
+    setMonth('')
+  }
+
+  const applyMonth = () => {
+    if (!month) return
+    setRange({ type: 'month', month })
+    setFrom('')
+    setTo('')
+  }
+
   useEffect(() => {
-    api.getStats(range).then(setStats)
+    const params = typeof range === 'string'
+      ? { range }
+      : range.type === 'month'
+        ? { range: 'calendar-month', month: range.month }
+        : { range: 'custom', from: range.from, to: range.to }
+    api.getStats(params).then(setStats)
   }, [range])
 
   const flat = flattenTree(stats?.projects || [])
@@ -16,7 +37,7 @@ export default function Reports({ projects }) {
     <div>
       <h1>Reports</h1>
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="flex gap-8">
+        <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
           {[
             { id: 'today', label: 'Today' },
             { id: 'week', label: 'Last 7 days' },
@@ -31,6 +52,24 @@ export default function Reports({ projects }) {
               {r.label}
             </button>
           ))}
+        </div>
+        <div className="report-filters">
+          <div className="report-filter">
+            <label htmlFor="report-from">Date range</label>
+            <div className="flex gap-8 items-center">
+              <input id="report-from" type="date" value={from} onChange={e => setFrom(e.target.value)} />
+              <span className="text-muted">to</span>
+              <input aria-label="End date" type="date" value={to} onChange={e => setTo(e.target.value)} />
+              <button className="btn btn-ghost" onClick={applyDateRange} disabled={!from || !to || from > to}>Apply</button>
+            </div>
+          </div>
+          <div className="report-filter">
+            <label htmlFor="report-month">Specific month</label>
+            <div className="flex gap-8 items-center">
+              <input id="report-month" type="month" value={month} onChange={e => setMonth(e.target.value)} />
+              <button className="btn btn-ghost" onClick={applyMonth} disabled={!month}>Apply</button>
+            </div>
+          </div>
         </div>
       </div>
       <div className="card">

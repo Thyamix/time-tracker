@@ -45,3 +45,12 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 .justify-between { justify-content: space-between; }
 .text-muted { color: var(--text2); }
 .text-sm { font-size: 12px; }
+.report-filters { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.report-filter { display: flex; flex-direction: column; gap: 6px; }
+.report-filter label { color: var(--text2); font-size: 12px; }
+.report-filter input { width: auto; min-width: 140px; }
+@media (max-width: 640px) {
+  .content { padding: 16px; }
+  .report-filter, .report-filter .flex { width: 100%; }
+  .report-filter input { min-width: 0; flex: 1; }
+}

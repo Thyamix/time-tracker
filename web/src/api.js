@@ -36,7 +36,11 @@ export const api = {
   stop: (note = '') => req('POST', '/track/stop', { note }),
 
   // Stats
-  getStats: (range = 'alltime') => req('GET', `/stats?range=${range}`),
+  getStats: (params = 'alltime') => {
+    const query = typeof params === 'string' ? { range: params } : params
+    const q = new URLSearchParams(query).toString()
+    return req('GET', `/stats${q ? '?' + q : ''}`)
+  },
 
   // Import
   importSessions: (sessions) => req('POST', '/import', sessions),

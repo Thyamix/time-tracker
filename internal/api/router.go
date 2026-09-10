@@ -125,7 +125,12 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 func (s *Server) getProjects(w http.ResponseWriter, r *http.Request) {
-	flat, err := s.db.GetAllProjects()
+	archived := false
+	if r.URL.Query().Get("archived") == "true" {
+		archived = true
+	}
+
+	flat, err := s.db.GetAllProjects(archived)
 	if err != nil {
 		jsonError(w, err, 500)
 		return
@@ -169,12 +174,13 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name     string `json:"name"`
 		ParentID *int64 `json:"parent_id"`
+		Archived *int8  `json:"archived"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, err, 400)
 		return
 	}
-	if err := s.db.UpdateProject(id, body.Name, body.ParentID); err != nil {
+	if err := s.db.UpdateProject(id, body.Name, body.ParentID, *body.Archived); err != nil {
 		jsonError(w, err, 500)
 		return
 	}
@@ -317,6 +323,29 @@ func (s *Server) getStats(w http.ResponseWriter, r *http.Request) {
 	case "month":
 		t := now.AddDate(0, -1, 0)
 		from = &t
+	case "custom":
+		var err error
+		from, err = parseDateParam(r.URL.Query().Get("from"), now.Location())
+		if err != nil {
+			jsonError(w, fmt.Errorf("invalid from date, use YYYY-MM-DD"), 400)
+			return
+		}
+		to, err = parseDateParam(r.URL.Query().Get("to"), now.Location())
+		if err != nil || from.After(*to) {
+			jsonError(w, fmt.Errorf("invalid to date, use YYYY-MM-DD"), 400)
+			return
+		}
+		end := to.AddDate(0, 0, 1)
+		to = &end
+	case "calendar-month":
+		month, err := time.ParseInLocation("2006-01", r.URL.Query().Get("month"), now.Location())
+		if err != nil {
+			jsonError(w, fmt.Errorf("invalid month, use YYYY-MM"), 400)
+			return
+		}
+		from = &month
+		end := month.AddDate(0, 1, 0)
+		to = &end
 	}
 
 	perProject, err := s.db.GetStats(from, to)
@@ -326,7 +355,7 @@ func (s *Server) getStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get project tree for context
-	flat, _ := s.db.GetAllProjects()
+	flat, _ := s.db.GetAllProjects(false)
 	tree := db.BuildTree(flat, perProject)
 
 	jsonOK(w, map[string]any{
@@ -334,6 +363,14 @@ func (s *Server) getStats(w http.ResponseWriter, r *http.Request) {
 		"projects": tree,
 		"raw":      perProject,
 	})
+}
+
+func parseDateParam(value string, location *time.Location) (*time.Time, error) {
+	parsed, err := time.ParseInLocation("2006-01-02", value, location)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 // ── Import ────────────────────────────────────────────────────────────────────

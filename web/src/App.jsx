@@ -60,7 +60,7 @@ export default function App() {
       <main className="content">
         {view === 'dashboard' && <Dashboard projects={projects} status={status} onRefresh={refresh} />}
         {view === 'projects' && <Projects projects={projects} status={status} onRefresh={refresh} />}
-        {view === 'reports' && <Reports projects={projects} />}
+        {view === 'reports' && <Reports />}
         {view === 'import' && <Import onRefresh={refresh} />}
       </main>
     </div>

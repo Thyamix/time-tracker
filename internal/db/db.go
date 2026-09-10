@@ -94,7 +94,7 @@ func (d *DB) migrate() error {
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
-func (d *DB) GetAllProjects() ([]*models.Project, error) {
+func (d *DB) GetAllProjects(includeArchived bool) ([]*models.Project, error) {
 	rows, err := d.conn.Query(`SELECT id, name, parent_id FROM projects ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -131,8 +131,8 @@ func (d *DB) CreateProject(name string, parentID *int64) (*models.Project, error
 	return &models.Project{ID: id, Name: name, ParentID: parentID}, nil
 }
 
-func (d *DB) UpdateProject(id int64, name string, parentID *int64) error {
-	_, err := d.conn.Exec(`UPDATE projects SET name = ?, parent_id = ? WHERE id = ?`, name, parentID, id)
+func (d *DB) UpdateProject(id int64, name string, parentID *int64, archived int8) error {
+	_, err := d.conn.Exec(`UPDATE projects SET name = ?, parent_id = ?, archived = ? WHERE id = ?`, name, parentID, archived, id)
 	return err
 }
 
@@ -208,7 +208,7 @@ func (d *DB) GetSessions(projectID *int64, from, to *time.Time) ([]*models.Sessi
 		args = append(args, from.Unix())
 	}
 	if to != nil {
-		query += ` AND start <= ?`
+		query += ` AND start < ?`
 		args = append(args, to.Unix())
 	}
 	query += ` ORDER BY start DESC`
@@ -346,7 +346,7 @@ func (d *DB) GetStats(from, to *time.Time) (map[int64]int64, error) {
 		args = append(args, from.Unix())
 	}
 	if to != nil {
-		query += ` AND start <= ?`
+		query += ` AND start < ?`
 		args = append(args, to.Unix())
 	}
 	query += ` GROUP BY project_id`
