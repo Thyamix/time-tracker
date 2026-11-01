@@ -64,6 +64,7 @@ function ProjectNode({ project, depth = 0, status, onRefresh, allProjects }) {
 
   const hasChildren = project.children?.length > 0
   const isActive = status?.session?.project_id === project.id
+  const sway = status?.tracking?.mode === 'sway'
 
   async function loadSessions() {
     const s = await api.getSessions({ project_id: project.id })
@@ -103,6 +104,7 @@ function ProjectNode({ project, depth = 0, status, onRefresh, allProjects }) {
   }
 
   async function start() {
+    if (sway || !status) return
     await api.start(project.id)
     onRefresh()
   }
@@ -144,7 +146,7 @@ function ProjectNode({ project, depth = 0, status, onRefresh, allProjects }) {
         {isActive && <span className="tag tag-green" style={{ fontSize: 10 }}>● live</span>}
 
         <div className="flex gap-8" style={{ marginLeft: 'auto' }}>
-          <button className="btn btn-sm btn-start" onClick={start} disabled={isActive} title="Start tracking">▶</button>
+          <button className="btn btn-sm btn-start" onClick={start} disabled={!status || isActive || sway} title={sway ? 'Managed by Sway workspace assignments' : 'Start tracking'}>{sway ? 'Sway' : '▶'}</button>
           <button className="btn btn-sm btn-ghost" onClick={() => setAddingChild(a => !a)} title="Add child">+</button>
           <button className="btn btn-sm btn-ghost" onClick={toggleSessions} title="Sessions">
             {showSessions ? '▲' : '≡'}
@@ -226,6 +228,7 @@ export default function Projects({ projects, status, onRefresh }) {
   return (
     <div>
       <h1>Projects</h1>
+      {status?.tracking?.mode === 'sway' && <p className="text-muted text-sm" style={{ marginBottom: 16 }}>Sway starts projects by workspace. Configure assignments or pause/resume tracking in the Dashboard.</p>}
 
       {/* New root project */}
       <div className="card" style={{ marginBottom: 16 }}>

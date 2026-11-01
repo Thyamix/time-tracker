@@ -1,50 +1,79 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { fmtDuration, fmtDateTime, flattenTree } from '../utils'
+import TrackingControls from './TrackingControls'
 
-export default function Dashboard({ projects, status, onRefresh }) {
-  const [elapsed, setElapsed] = useState(status?.elapsed_seconds || 0)
+function SessionTimer({ seconds }) {
+  const [elapsed, setElapsed] = useState(seconds || 0)
+  useEffect(() => {
+    const t = setInterval(() => setElapsed(e => e + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const h = Math.floor(elapsed / 3600)
+  const m = Math.floor((elapsed % 3600) / 60)
+  const s = elapsed % 60
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`
+}
+
+export default function Dashboard({ projects, status, onRefresh, onTrackingChange }) {
   const [stopNote, setStopNote] = useState('')
   const [showStopNote, setShowStopNote] = useState(false)
   const [recentSessions, setRecentSessions] = useState([])
+  const [actionError, setActionError] = useState('')
+  const [pending, setPending] = useState(false)
+  const sway = status?.tracking?.mode === 'sway'
 
   useEffect(() => {
-    api.getSessions().then(s => setRecentSessions((s || []).slice(0, 8)))
-  }, [status?.active])
-
-  // Live elapsed timer
-  useEffect(() => {
-    if (!status?.active) { setElapsed(0); return }
-    setElapsed(status.elapsed_seconds)
-    const t = setInterval(() => setElapsed(e => e + 1), 1000)
-    return () => clearInterval(t)
-  }, [status?.active, status?.elapsed_seconds])
+    let cancelled = false
+    api.getSessions().then(s => {
+      if (!cancelled) setRecentSessions((s || []).slice(0, 8))
+    }).catch(error => {
+      if (!cancelled) setActionError(`Could not load recent sessions: ${error.message}`)
+    })
+    return () => { cancelled = true }
+  }, [status?.active, status?.session?.id])
 
   const flat = flattenTree(projects)
 
   async function handleStart(projectId) {
-    await api.start(projectId)
-    onRefresh()
+    if (sway || !status) return
+    setPending(true)
+    setActionError('')
+    try {
+      await api.start(projectId)
+      await onRefresh()
+    } catch (error) {
+      setActionError(error.message)
+    } finally {
+      setPending(false)
+    }
   }
 
   async function handleStop() {
     if (!showStopNote) { setShowStopNote(true); return }
-    await api.stop(stopNote)
-    setShowStopNote(false)
-    setStopNote('')
-    onRefresh()
+    setPending(true)
+    setActionError('')
+    try {
+      await api.stop(stopNote)
+      if (sway) onTrackingChange({ ...status.tracking, enabled: false })
+      setShowStopNote(false)
+      setStopNote('')
+      await onRefresh()
+    } catch (error) {
+      setActionError(error.message)
+    } finally {
+      setPending(false)
+    }
   }
-
-  const h = Math.floor(elapsed / 3600)
-  const m = Math.floor((elapsed % 3600) / 60)
-  const s = elapsed % 60
-  const elapsedStr = h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`
 
   return (
     <div>
       <h1>Dashboard</h1>
+
+      <TrackingControls projects={projects} tracking={status?.tracking} onTrackingChange={onTrackingChange} onRefresh={onRefresh} />
+      {actionError && <p className="tracking-error text-sm" role="alert" style={{ marginBottom: 16 }}>{actionError}</p>}
 
       {/* Active session card */}
       <div className="card" style={{ marginBottom: 16 }}>
@@ -57,36 +86,38 @@ export default function Dashboard({ projects, status, onRefresh }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--green)' }}>
-                  {elapsedStr}
+                  <SessionTimer key={`${status.session?.id}:${status.elapsed_seconds}`} seconds={status.elapsed_seconds} />
                 </div>
                 <div className="text-muted text-sm">total: {fmtDuration(status.total_seconds)}</div>
               </div>
             </div>
             {showStopNote ? (
-              <div className="flex gap-8">
+              <div className="tracking-actions">
                 <input
                   autoFocus
                   placeholder="Note (optional)..."
                   value={stopNote}
                   onChange={e => setStopNote(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleStop()}
+                  disabled={pending}
+                  onKeyDown={e => e.key === 'Enter' && !pending && handleStop()}
                 />
-                <button className="btn btn-stop" onClick={handleStop}>Stop</button>
-                <button className="btn btn-ghost" onClick={() => setShowStopNote(false)}>Cancel</button>
+                <button className="btn btn-stop" disabled={pending} onClick={handleStop}>{sway ? 'Pause all tracking' : 'Stop'}</button>
+                <button className="btn btn-ghost" disabled={pending} onClick={() => setShowStopNote(false)}>Cancel</button>
               </div>
             ) : (
-              <button className="btn btn-stop" onClick={handleStop}>⏹ Stop</button>
+              <button className="btn btn-stop" disabled={pending} onClick={handleStop}>{sway ? 'Pause all tracking with note' : '⏹ Stop'}</button>
             )}
           </div>
         ) : (
           <div className="text-muted" style={{ textAlign: 'center', padding: '12px 0' }}>
-            No active session — pick a project below to start
+            {sway ? !status.tracking.enabled ? 'Workspace tracking is paused. Resume in tracking settings.' : !status.tracking.connected ? 'Waiting for Sway to connect.' : 'No active session. Focus an assigned workspace to track.' : 'No active session — pick a project below to start'}
           </div>
         )}
       </div>
 
       {/* Quick start */}
       <h2>Projects</h2>
+      {sway && <p className="text-muted text-sm" style={{ marginBottom: 12 }}>Projects start automatically on assigned workspaces. Edit assignments in tracking settings.</p>}
       <div className="card">
         {flat.length === 0 ? (
           <div className="text-muted text-sm">No projects yet — create one in the Projects tab.</div>
@@ -108,10 +139,11 @@ export default function Dashboard({ projects, status, onRefresh }) {
                 </div>
                 <button
                   className="btn btn-sm btn-start"
-                  disabled={status?.session?.project_id === p.id}
+                  disabled={!status || sway || pending || status?.session?.project_id === p.id}
+                  title={sway ? 'Managed by Sway workspace assignments' : 'Start tracking'}
                   onClick={() => handleStart(p.id)}
                 >
-                  {status?.session?.project_id === p.id ? '●' : '▶'}
+                  {sway ? 'Sway' : status?.session?.project_id === p.id ? '●' : '▶'}
                 </button>
               </div>
             ))}

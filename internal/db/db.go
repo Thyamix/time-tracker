@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,6 +41,18 @@ var migrations = []struct {
 	{2, `
         ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
     `},
+	{3, `
+        CREATE TABLE tracking_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            config TEXT NOT NULL,
+            checkpoint INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO tracking_settings (id, config) VALUES
+            (1, '{"mode":"global","enabled":true,"assignments":[]}');
+        UPDATE sessions SET end = start WHERE end IS NULL
+            AND id != (SELECT MAX(id) FROM sessions WHERE end IS NULL);
+        CREATE UNIQUE INDEX one_active_session ON sessions ((1)) WHERE end IS NULL;
+    `},
 }
 
 func Open(path string) (*DB, error) {
@@ -50,6 +63,7 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn.SetMaxOpenConns(1)
 	d := &DB{conn: conn}
 	return d, d.migrate()
 }
@@ -277,11 +291,65 @@ func (d *DB) GetActiveSession() (*models.Session, error) {
 }
 
 func (d *DB) StartTracking(projectID int64) (*models.Session, error) {
-	// Stop any active session first
-	if err := d.stopActiveSession(""); err != nil {
+	if err := d.ApplyTracking(nil, projectID, time.Now(), "", true); err != nil {
 		return nil, err
 	}
-	return d.CreateSession(projectID, time.Now(), nil, "")
+	return d.GetActiveSession()
+}
+
+func (d *DB) TrackingConfig() (models.TrackingConfig, int64, error) {
+	var config models.TrackingConfig
+	var raw string
+	var checkpoint int64
+	err := d.conn.QueryRow(`SELECT config, checkpoint FROM tracking_settings WHERE id = 1`).Scan(&raw, &checkpoint)
+	if err == nil {
+		err = json.Unmarshal([]byte(raw), &config)
+	}
+	return config, checkpoint, err
+}
+
+// ApplyTracking uses one timestamp and transaction for both sides of a focus switch.
+// A zero project ID means no timer should run. Repeated observations keep the segment.
+func (d *DB) ApplyTracking(config *models.TrackingConfig, projectID int64, at time.Time, note string, restart bool) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if projectID != 0 {
+		var id int64
+		if err := tx.QueryRow(`SELECT id FROM projects WHERE id = ?`, projectID).Scan(&id); err != nil {
+			return fmt.Errorf("project not found: %w", err)
+		}
+	}
+	var activeID int64
+	err = tx.QueryRow(`SELECT project_id FROM sessions WHERE end IS NULL`).Scan(&activeID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if restart || activeID != projectID {
+		if _, err := tx.Exec(`UPDATE sessions SET end = MAX(start, ?), note = CASE WHEN ? = '' THEN note ELSE ? END WHERE end IS NULL`, at.Unix(), note, note); err != nil {
+			return err
+		}
+		if projectID != 0 {
+			if _, err := tx.Exec(`INSERT INTO sessions (project_id, start) VALUES (?, ?)`, projectID, at.Unix()); err != nil {
+				return err
+			}
+		}
+	}
+	if config != nil {
+		raw, err := json.Marshal(config)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE tracking_settings SET config = ? WHERE id = 1`, string(raw)); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE tracking_settings SET checkpoint = ? WHERE id = 1`, at.Unix()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (d *DB) StopTracking(note string) (*models.Session, error) {

@@ -8,17 +8,19 @@ import (
 	"time"
 	"timetrack/internal/db"
 	"timetrack/internal/models"
+	"timetrack/internal/tracking"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 type Server struct {
-	db *db.DB
+	db      *db.DB
+	tracker *tracking.Manager
 }
 
-func NewServer(database *db.DB) *Server {
-	return &Server{db: database}
+func NewServer(database *db.DB, tracker *tracking.Manager) *Server {
+	return &Server{db: database, tracker: tracker}
 }
 
 func (s *Server) Router() http.Handler {
@@ -56,6 +58,8 @@ func (s *Server) Router() http.Handler {
 	// Tracking
 	r.Post("/api/track/start", s.startTracking)
 	r.Post("/api/track/stop", s.stopTracking)
+	r.Get("/api/tracking", s.getTracking)
+	r.Post("/api/tracking", s.configureTracking)
 
 	// Stats
 	r.Get("/api/stats", s.getStats)
@@ -69,18 +73,32 @@ func (s *Server) Router() http.Handler {
 // ── Status ────────────────────────────────────────────────────────────────────
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
-	active, err := s.db.GetActiveSession()
+	state, active, err := s.tracker.Snapshot()
 	if err != nil {
 		jsonError(w, err, 500)
 		return
 	}
 
-	status := &models.Status{}
+	status := &models.Status{Tracking: state}
 
 	if active == nil {
 		status.WaybarText = ""
 		status.WaybarTooltip = "No active session"
 		status.WaybarClass = "inactive"
+		if state.Mode == "sway" {
+			switch {
+			case !state.Enabled:
+				status.WaybarText = "Sway paused"
+				status.WaybarTooltip = "Workspace tracking paused\nClick to resume"
+				status.WaybarClass = "paused"
+			case !state.Connected:
+				status.WaybarText = "Sway offline"
+				status.WaybarTooltip = "Cannot connect to Sway; no time is being tracked"
+				status.WaybarClass = "disconnected"
+			default:
+				status.WaybarTooltip = fmt.Sprintf("Workspace %s is unassigned; no time is being tracked\nClick for workspace controls", state.FocusedWorkspace)
+			}
+		}
 		jsonOK(w, status)
 		return
 	}
@@ -117,6 +135,9 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 
 	status.WaybarText = fmt.Sprintf("⏱ %s  %s (%s)", path, sessionStr, totalStr)
 	status.WaybarTooltip = fmt.Sprintf("Tracking: %s\nClick to stop", path)
+	if state.Mode == "sway" {
+		status.WaybarTooltip = fmt.Sprintf("Workspace %s\nTracking: %s\nClick for workspace controls", state.FocusedWorkspace, path)
+	}
 	status.WaybarClass = "active"
 
 	jsonOK(w, status)
@@ -189,7 +210,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 	id := paramInt(r, "id")
-	if err := s.db.DeleteProject(id); err != nil {
+	if err := s.tracker.DeleteProject(id); err != nil {
 		jsonError(w, err, 500)
 		return
 	}
@@ -235,7 +256,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err, 400)
 		return
 	}
-	sess, err := s.db.CreateSession(body.ProjectID, body.Start, body.End, body.Note)
+	sess, err := s.tracker.EditSession(0, body.ProjectID, body.Start, body.End, body.Note)
 	if err != nil {
 		jsonError(w, err, 500)
 		return
@@ -254,7 +275,7 @@ func (s *Server) updateSession(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err, 400)
 		return
 	}
-	if err := s.db.UpdateSession(id, body.Start, body.End, body.Note); err != nil {
+	if _, err := s.tracker.EditSession(id, 0, body.Start, body.End, body.Note); err != nil {
 		jsonError(w, err, 500)
 		return
 	}
@@ -280,9 +301,9 @@ func (s *Server) startTracking(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, fmt.Errorf("project_id required"), 400)
 		return
 	}
-	sess, err := s.db.StartTracking(body.ProjectID)
+	sess, err := s.tracker.Start(body.ProjectID)
 	if err != nil {
-		jsonError(w, err, 500)
+		jsonError(w, err, 400)
 		return
 	}
 	jsonOK(w, sess)
@@ -294,16 +315,41 @@ func (s *Server) stopTracking(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 
-	sess, err := s.db.StopTracking(body.Note)
+	sess, err := s.tracker.Stop(body.Note)
 	if err != nil {
 		jsonError(w, err, 500)
 		return
 	}
 	if sess == nil {
-		jsonError(w, fmt.Errorf("no active session"), 404)
-		return
+		state, _, _ := s.tracker.Snapshot()
+		if state.Mode != "sway" {
+			jsonError(w, fmt.Errorf("no active session"), 404)
+			return
+		}
 	}
 	jsonOK(w, sess)
+}
+
+func (s *Server) getTracking(w http.ResponseWriter, r *http.Request) {
+	state, _, err := s.tracker.Snapshot()
+	if err != nil {
+		jsonError(w, err, 500)
+		return
+	}
+	jsonOK(w, state)
+}
+
+func (s *Server) configureTracking(w http.ResponseWriter, r *http.Request) {
+	var config models.TrackingConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		jsonError(w, err, 400)
+		return
+	}
+	if err := s.tracker.Configure(config); err != nil {
+		jsonError(w, err, 400)
+		return
+	}
+	s.getTracking(w, r)
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────

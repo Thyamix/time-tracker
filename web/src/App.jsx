@@ -10,13 +10,14 @@ export default function App() {
   const [view, setView] = useState('dashboard')
   const [projects, setProjects] = useState([])
   const [status, setStatus] = useState(null)
+  const [statusError, setStatusError] = useState('')
 
-  const refresh = useCallback(async () => {
-    try {
-      const [p, s] = await Promise.all([api.getProjects(), api.status()])
+  const refresh = useCallback(() => {
+    return Promise.all([api.getProjects(), api.status()]).then(([p, s]) => {
       setProjects(p || [])
       setStatus(s)
-    } catch (e) { /* server may be starting */ }
+      setStatusError('')
+    }).catch(error => setStatusError(error.message))
   }, [])
 
   useEffect(() => {
@@ -24,6 +25,10 @@ export default function App() {
     const t = setInterval(refresh, 5000)
     return () => clearInterval(t)
   }, [refresh])
+
+  function updateTracking(tracking) {
+    setStatus(current => current ? { ...current, tracking } : current)
+  }
 
   const nav = [
     { id: 'dashboard', label: '⏱ Dashboard' },
@@ -58,7 +63,8 @@ export default function App() {
         )}
       </aside>
       <main className="content">
-        {view === 'dashboard' && <Dashboard projects={projects} status={status} onRefresh={refresh} />}
+        {statusError && <div className="card tracking-error" role="alert" style={{ marginBottom: 16 }}>Could not refresh status: {statusError}. Displayed status may be out of date.</div>}
+        {view === 'dashboard' && <Dashboard projects={projects} status={status} onRefresh={refresh} onTrackingChange={updateTracking} />}
         {view === 'projects' && <Projects projects={projects} status={status} onRefresh={refresh} />}
         {view === 'reports' && <Reports />}
         {view === 'import' && <Import onRefresh={refresh} />}

@@ -32,6 +32,8 @@ export const api = {
   deleteSession: (id) => req('DELETE', `/sessions/${id}`),
 
   // Tracking
+  getTracking: () => req('GET', '/tracking'),
+  setTracking: ({ mode, enabled, assignments }) => req('POST', '/tracking', { mode, enabled, assignments }),
   start: (project_id) => req('POST', '/track/start', { project_id }),
   stop: (note = '') => req('POST', '/track/stop', { note }),
 

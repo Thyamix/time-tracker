@@ -23,15 +23,34 @@ type Session struct {
 }
 
 type Status struct {
-	Active        bool     `json:"active"`
-	Project       *Project `json:"project,omitempty"`
-	Session       *Session `json:"session,omitempty"`
-	Path          string   `json:"path"` // e.g. "Chess > Library"
-	Elapsed       int64    `json:"elapsed_seconds"`
-	Total         int64    `json:"total_seconds"`
-	WaybarText    string   `json:"text"`
-	WaybarTooltip string   `json:"tooltip"`
-	WaybarClass   string   `json:"class"`
+	Tracking      TrackingState `json:"tracking"`
+	Active        bool          `json:"active"`
+	Project       *Project      `json:"project,omitempty"`
+	Session       *Session      `json:"session,omitempty"`
+	Path          string        `json:"path"` // e.g. "Chess > Library"
+	Elapsed       int64         `json:"elapsed_seconds"`
+	Total         int64         `json:"total_seconds"`
+	WaybarText    string        `json:"text"`
+	WaybarTooltip string        `json:"tooltip"`
+	WaybarClass   string        `json:"class"`
+}
+
+type WorkspaceAssignment struct {
+	Workspace string `json:"workspace"`
+	ProjectID int64  `json:"project_id"`
+}
+
+type TrackingConfig struct {
+	Mode        string                `json:"mode"`
+	Enabled     bool                  `json:"enabled"`
+	Assignments []WorkspaceAssignment `json:"assignments"`
+}
+
+type TrackingState struct {
+	TrackingConfig
+	FocusedWorkspace string `json:"focused_workspace"`
+	FocusedWorkspaceNumber int `json:"focused_workspace_number"`
+	Connected        bool   `json:"connected"`
 }
 
 type ImportSession struct {

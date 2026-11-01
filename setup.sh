@@ -26,6 +26,7 @@ mkdir -p ~/.config/systemd/user
 cp -f "$SCRIPT_DIR/scripts/timetrack.service" ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now timetrack
+systemctl --user restart --now timetrack
 
 echo "==> Opening browser..."
 xdg-open http://localhost:7332 2>/dev/null || open http://localhost:7332 2>/dev/null || true

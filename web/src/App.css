@@ -30,6 +30,7 @@ h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 .btn-stop    { background: var(--red); color: #fff; }
 .btn-start   { background: var(--green); color: #0d1117; }
 .btn-sm { padding: 3px 10px; font-size: 12px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 input, textarea, select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 100%; }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
 .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--bg3); color: var(--text2); }
@@ -49,8 +50,28 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 .report-filter { display: flex; flex-direction: column; gap: 6px; }
 .report-filter label { color: var(--text2); font-size: 12px; }
 .report-filter input { width: auto; min-width: 140px; }
+.tracking-controls { margin-bottom: 16px; }
+.tracking-controls h2 { color: var(--text); }
+.tracking-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.tracking-toolbar h2 { margin-bottom: 0; }
+.tracking-live { margin-top: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.tracking-fields { border: 0; min-width: 0; margin-top: 16px; }
+.tracking-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tracking-field > span { color: var(--text2); font-size: 12px; }
+.tracking-assignment { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; margin-bottom: 8px; }
+.tracking-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.tracking-error { color: var(--red); overflow-wrap: anywhere; }
+.tracking-warning { color: var(--yellow); }
+.tag-warning { background: rgba(210,153,34,0.15); color: var(--yellow); }
 @media (max-width: 640px) {
+  .app { flex-direction: column; }
+  .sidebar { width: 100%; min-width: 0; padding: 12px 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .logo { padding-bottom: 8px; }
+  nav { flex-direction: row; flex-wrap: wrap; }
+  .sidebar-status { display: none; }
   .content { padding: 16px; }
+  .tracking-assignment { grid-template-columns: minmax(0, 1fr); }
+  .tracking-assignment > button { justify-self: start; }
   .report-filter, .report-filter .flex { width: 100%; }
   .report-filter input { min-width: 0; flex: 1; }
 }

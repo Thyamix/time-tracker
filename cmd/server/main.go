@@ -1,16 +1,23 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"timetrack/internal/api"
 	"timetrack/internal/db"
+	"timetrack/internal/sway"
+	"timetrack/internal/tracking"
 )
 
 //go:embed web/dist
@@ -38,7 +45,18 @@ func main() {
 	}
 	defer database.Close()
 
-	server := api.NewServer(database)
+	tracker, err := tracking.New(database)
+	if err != nil {
+		log.Fatalf("failed to initialize tracking: %v", err)
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	watcherDone := make(chan struct{})
+	go func() {
+		defer close(watcherDone)
+		sway.Watch(ctx, tracker.Observe, tracker.Disconnect)
+	}()
+	server := api.NewServer(database, tracker)
 
 	mux := http.NewServeMux()
 
@@ -62,5 +80,21 @@ func main() {
 
 	addr := "127.0.0.1:" + port
 	fmt.Printf("timetrack listening on http://%s\n", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	httpServer := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- httpServer.ListenAndServe() }()
+	select {
+	case err := <-serveDone:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP server: %v", err)
+		}
+	case <-ctx.Done():
+	}
+	shutdown, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	if err := httpServer.Shutdown(shutdown); err != nil {
+		log.Printf("HTTP shutdown: %v", err)
+	}
+	cancel()
+	<-watcherDone
 }
