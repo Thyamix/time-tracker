@@ -6,6 +6,40 @@ import (
 	"time"
 )
 
+func TestUpdateProjectArchiveState(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	project, err := database.CreateProject("Original", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, original := range []int8{0, 1} {
+		for _, update := range []*int8{nil, new(int8(0)), new(int8(1))} {
+			if _, err := database.conn.Exec(`UPDATE projects SET archived = ? WHERE id = ?`, original, project.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.UpdateProject(project.ID, "Renamed", nil, update); err != nil {
+				t.Fatal(err)
+			}
+			var name string
+			var archived int8
+			if err := database.conn.QueryRow(`SELECT name, archived FROM projects WHERE id = ?`, project.ID).Scan(&name, &archived); err != nil {
+				t.Fatal(err)
+			}
+			want := original
+			if update != nil {
+				want = *update
+			}
+			if name != "Renamed" || archived != want {
+				t.Errorf("after rename: name = %q, archived = %d; want Renamed, %d", name, archived, want)
+			}
+		}
+	}
+}
+
 func TestGetProjectDayTotal(t *testing.T) {
 	location := time.FixedZone("UTC+2", 2*3600)
 	now := time.Date(2026, time.November, 4, 12, 0, 0, 0, location)

@@ -145,8 +145,8 @@ func (d *DB) CreateProject(name string, parentID *int64) (*models.Project, error
 	return &models.Project{ID: id, Name: name, ParentID: parentID}, nil
 }
 
-func (d *DB) UpdateProject(id int64, name string, parentID *int64, archived int8) error {
-	_, err := d.conn.Exec(`UPDATE projects SET name = ?, parent_id = ?, archived = ? WHERE id = ?`, name, parentID, archived, id)
+func (d *DB) UpdateProject(id int64, name string, parentID *int64, archived *int8) error {
+	_, err := d.conn.Exec(`UPDATE projects SET name = ?, parent_id = ?, archived = COALESCE(?, archived) WHERE id = ?`, name, parentID, archived, id)
 	return err
 }
 

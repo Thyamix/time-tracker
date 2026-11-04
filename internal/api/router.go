@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 	"timetrack/internal/db"
 	"timetrack/internal/models"
@@ -206,7 +207,12 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err, 400)
 		return
 	}
-	if err := s.db.UpdateProject(id, body.Name, body.ParentID, *body.Archived); err != nil {
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" {
+		jsonError(w, fmt.Errorf("name required"), 400)
+		return
+	}
+	if err := s.db.UpdateProject(id, body.Name, body.ParentID, body.Archived); err != nil {
 		jsonError(w, err, 500)
 		return
 	}

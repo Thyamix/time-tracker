@@ -59,6 +59,8 @@ function ProjectNode({ project, depth = 0, status, onRefresh, allProjects }) {
   const [newSession, setNewSession] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [nameVal, setNameVal] = useState(project.name)
+  const [nameError, setNameError] = useState('')
+  const [savingName, setSavingName] = useState(false)
   const [addingChild, setAddingChild] = useState(false)
   const [childName, setChildName] = useState('')
 
@@ -83,9 +85,23 @@ function ProjectNode({ project, depth = 0, status, onRefresh, allProjects }) {
   }
 
   async function saveName() {
-    await api.updateProject(project.id, nameVal, project.parent_id)
-    setEditingName(false)
-    onRefresh()
+    if (savingName) return
+    const name = nameVal.trim()
+    if (!name) {
+      setNameError('Name is required')
+      return
+    }
+    setSavingName(true)
+    setNameError('')
+    try {
+      await api.updateProject(project.id, name, project.parent_id)
+      setEditingName(false)
+      await onRefresh()
+    } catch (error) {
+      setNameError(`Could not rename project: ${error.message}`)
+    } finally {
+      setSavingName(false)
+    }
   }
 
   async function addChild() {
@@ -130,17 +146,23 @@ function ProjectNode({ project, depth = 0, status, onRefresh, allProjects }) {
         {editingName ? (
           <input
             autoFocus value={nameVal}
+            disabled={savingName}
             onChange={e => setNameVal(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
             style={{ width: 160 }}
           />
         ) : (
           <span style={{ fontWeight: hasChildren ? 600 : 400, cursor: 'pointer' }}
-            onDoubleClick={() => setEditingName(true)}
+            onDoubleClick={() => {
+              setNameVal(project.name)
+              setNameError('')
+              setEditingName(true)
+            }}
           >
             {project.name}
           </span>
         )}
+        {nameError && <span className="tracking-error text-sm" role="alert">{nameError}</span>}
 
         <span className="text-muted text-sm">{fmtDuration(project.total_seconds)}</span>
         {isActive && <span className="tag tag-green" style={{ fontSize: 10 }}>● live</span>}

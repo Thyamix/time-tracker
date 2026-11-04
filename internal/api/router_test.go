@@ -5,12 +5,66 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 	"timetrack/internal/db"
 	"timetrack/internal/models"
 	"timetrack/internal/tracking"
 )
+
+func TestRenameProject(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	parent, err := database.CreateProject("Parent", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := NewServer(database, nil).Router()
+	for _, parentID := range []*int64{nil, &parent.ID} {
+		project, err := database.CreateProject("Original", parentID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := json.Marshal(map[string]any{"name": " Renamed ", "parent_id": parentID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest("PATCH", fmt.Sprintf("/api/projects/%d", project.ID), strings.NewReader(string(payload))))
+		if response.Code != 204 {
+			t.Fatalf("rename status = %d: %s", response.Code, response.Body.String())
+		}
+		renamed, err := database.GetProject(project.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if renamed.Name != "Renamed" {
+			t.Errorf("name = %q; want Renamed", renamed.Name)
+		}
+		if (parentID == nil) != (renamed.ParentID == nil) || parentID != nil && *parentID != *renamed.ParentID {
+			t.Errorf("parent changed during rename: %+v", renamed)
+		}
+		for _, name := range []string{"", "   "} {
+			response := httptest.NewRecorder()
+			payload := fmt.Sprintf(`{"name":%q}`, name)
+			router.ServeHTTP(response, httptest.NewRequest("PATCH", fmt.Sprintf("/api/projects/%d", project.ID), strings.NewReader(payload)))
+			if response.Code != 400 {
+				t.Errorf("blank rename status = %d; want 400", response.Code)
+			}
+		}
+		renamed, err = database.GetProject(project.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if renamed.Name != "Renamed" {
+			t.Errorf("invalid rename changed name to %q", renamed.Name)
+		}
+	}
+}
 
 func TestWaybarStatus(t *testing.T) {
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
