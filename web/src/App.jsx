@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from './api'
+import { fmtDuration } from './utils'
 import Dashboard from './views/Dashboard'
 import Projects from './views/Projects'
 import Reports from './views/Reports'
@@ -57,7 +58,7 @@ export default function App() {
             <div className="status-dot" />
             <div className="status-info">
               <div className="status-path">{status.path}</div>
-              <div className="status-time">{status.text?.split('  ')[1]}</div>
+              <div className="status-time">{fmtDuration(status.elapsed_seconds)} ({fmtDuration(status.total_seconds)})</div>
             </div>
           </div>
         )}

@@ -382,6 +382,17 @@ func (d *DB) GetProjectTotalWithActive(projectID int64) (int64, error) {
 	return total, err
 }
 
+// GetProjectDayTotal counts only time between local midnight and now, including active sessions.
+func (d *DB) GetProjectDayTotal(projectID int64, now time.Time) (int64, error) {
+	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	var total int64
+	err := d.conn.QueryRow(`
+		SELECT COALESCE(SUM(MIN(COALESCE(end, ?), ?) - MAX(start, ?)), 0)
+		FROM sessions WHERE project_id = ? AND start < ? AND COALESCE(end, ?) > ?`,
+		now.Unix(), now.Unix(), from.Unix(), projectID, now.Unix(), now.Unix(), from.Unix()).Scan(&total)
+	return total, err
+}
+
 // GetProjectPath returns the full path string e.g. "Chess > Library"
 func (d *DB) GetProjectPath(id int64) (string, error) {
 	var parts []string

@@ -138,6 +138,8 @@ Add to `~/.config/waybar/style.css`:
 
 Then add `"custom/timetrack"` to your Waybar modules array. The one-second interval lets the bar follow tracking changes within about a second.
 
+While tracking, the module shows the current project's total for today, followed by its all-time total in parentheses. Today starts at the server's local midnight; sessions crossing midnight count only time spent today. Paused workspace tracking displays `Tracking paused`.
+
 ### Rofi keybind
 
 The setup script installs the extensionless helper names used above. For a manual install, run from the repository root:

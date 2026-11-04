@@ -88,8 +88,8 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		if state.Mode == "sway" {
 			switch {
 			case !state.Enabled:
-				status.WaybarText = "Sway paused"
-				status.WaybarTooltip = "Workspace tracking paused\nClick to resume"
+				status.WaybarText = "Tracking paused"
+				status.WaybarTooltip = "Workspace tracking paused\nClick for workspace controls"
 				status.WaybarClass = "paused"
 			case !state.Connected:
 				status.WaybarText = "Sway offline"
@@ -105,7 +105,8 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 
 	status.Active = true
 	status.Session = active
-	status.Elapsed = int64(time.Since(active.Start).Seconds())
+	now := time.Now()
+	status.Elapsed = int64(now.Sub(active.Start).Seconds())
 
 	path, _ := s.db.GetProjectPath(active.ProjectID)
 	status.Path = path
@@ -113,15 +114,19 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	total, _ := s.db.GetProjectTotalWithActive(active.ProjectID)
 	status.Total = total
 
-	elapsed := status.Elapsed
-	h := elapsed / 3600
-	m := (elapsed % 3600) / 60
+	dayTotal, err := s.db.GetProjectDayTotal(active.ProjectID, now)
+	if err != nil {
+		jsonError(w, err, 500)
+		return
+	}
+	h := dayTotal / 3600
+	m := (dayTotal % 3600) / 60
 
-	var sessionStr string
+	var dayStr string
 	if h > 0 {
-		sessionStr = fmt.Sprintf("%dh %dm", h, m)
+		dayStr = fmt.Sprintf("%dh %dm", h, m)
 	} else {
-		sessionStr = fmt.Sprintf("%dm", m)
+		dayStr = fmt.Sprintf("%dm", m)
 	}
 
 	th := total / 3600
@@ -133,7 +138,7 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		totalStr = fmt.Sprintf("%dm", tm)
 	}
 
-	status.WaybarText = fmt.Sprintf("⏱ %s  %s (%s)", path, sessionStr, totalStr)
+	status.WaybarText = fmt.Sprintf("⏱ %s  %s today (%s)", path, dayStr, totalStr)
 	status.WaybarTooltip = fmt.Sprintf("Tracking: %s\nClick to stop", path)
 	if state.Mode == "sway" {
 		status.WaybarTooltip = fmt.Sprintf("Workspace %s\nTracking: %s\nClick for workspace controls", state.FocusedWorkspace, path)
